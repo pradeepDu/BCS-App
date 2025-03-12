@@ -1,34 +1,42 @@
 import React from "react";
-import { AppBar, Toolbar, Typography, IconButton, Avatar } from "@mui/material";
-import { FaHome, FaCog, FaFileAlt } from "react-icons/fa";
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Button } from "../components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 
 const Navbar: React.FC = () => {
   return (
-    <AppBar position="static" color="primary">
-      <Toolbar className="flex justify-between items-center">
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeInOut" }}
+      className="fixed top-0 w-full bg-black text-white p-4 z-50"
+    >
+      <div className="flex justify-between items-center">
         {/* Logo and Title */}
         <div className="flex items-center gap-2">
-          <Avatar src="/logo.png" alt="Logo" />
-          <Typography variant="h6" component="div">
-            My Dashboard
-          </Typography>
+          <Avatar>
+            <AvatarImage src="/logo.png" alt="Logo" />
+            <AvatarFallback>MD</AvatarFallback>
+          </Avatar>
+          <h1 className="text-lg font-bold">My Dashboard</h1>
         </div>
 
         {/* Navigation Links */}
         <div className="flex items-center gap-4">
-          <IconButton color="inherit">
-            <FaHome size={20} />
-          </IconButton>
-          <IconButton color="inherit">
-            <FaFileAlt size={20} />
-          </IconButton>
-          <IconButton color="inherit">
-            <FaCog size={20} />
-          </IconButton>
-          <Avatar src="/user-avatar.png" alt="User Profile" />
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/">Home</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/monitor">Monitor</Link>
+          </Button>
+          <Avatar>
+            <AvatarImage src="/user-avatar.png" alt="User Profile" />
+            <AvatarFallback>UP</AvatarFallback>
+          </Avatar>
         </div>
-      </Toolbar>
-    </AppBar>
+      </div>
+    </motion.div>
   );
 };
 

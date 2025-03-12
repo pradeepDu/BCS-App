@@ -1,24 +1,19 @@
 import React from "react";
-import { Box, Button, Typography } from "@mui/material";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
+import WorkflowModal from "./WorkflowModal.tsx";
 
 const WorkflowSelection: React.FC = () => {
   return (
-    <Box className="p-4 bg-white rounded-md shadow-md">
-      <Typography variant="h6" gutterBottom>
-        Workflow Selection
-      </Typography>
-      <Box className="flex flex-col gap-2">
-        <Button variant="outlined" color="primary">
-          Subtitle
-        </Button>
-        <Button variant="outlined" color="primary">
-          Versioning
-        </Button>
-        <Button variant="outlined" color="primary">
-          Transcoding
-        </Button>
-      </Box>
-    </Box>
+    <Card className="p-4 h-full bg-gray-800 text-white">
+      <CardHeader>
+        <CardTitle>Workflow Selection</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <WorkflowModal triggerText="Subtitle" />
+        <WorkflowModal triggerText="Versioning" />
+        <WorkflowModal triggerText="Transcoding" />
+      </CardContent>
+    </Card>
   );
 };
 
