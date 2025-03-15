@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { Card } from "../ui/card";
-import TaskProgress from "../components/TaskProgress";
-import InputButton from "../components/InputButton";
-import OutputButton from "../components/OutputButton";
+import { Card } from "../../ui/card";
+import TaskProgress from "../MonitorPage/components/TaskProgress";
+import InputButton from "../MonitorPage/components/InputButton";
+import OutputButton from "../MonitorPage/components/OutputButton";
 
 const MonitorPage: React.FC = () => {
   const [progress, setProgress] = useState(50);

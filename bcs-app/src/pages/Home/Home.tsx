@@ -1,6 +1,6 @@
 import React from "react";
-import FilePreview from "../components/FilePreview";
-import WorkflowSelection from "../components/WorkflowSelection";
+import FilePreview from "../Home/components/FilePreview";
+import WorkflowSelection from "../Home/components/WorkflowSelection";
 
 const Home: React.FC = () => {
   return (

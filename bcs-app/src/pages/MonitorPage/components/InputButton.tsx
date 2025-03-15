@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Button } from "../ui/button";
-import Modal from "../ui/modal";
+import { Button } from "../../../ui/button";
+import Modal from "../../../ui/modal";
 import LogsPage from "./LogsPage";
 import ProcessesPage from "./ProcessesPage";
 import InputsPage from "./InputsPage";

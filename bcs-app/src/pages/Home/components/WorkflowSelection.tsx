@@ -1,6 +1,6 @@
 import React from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
-import WorkflowModal from "./WorkflowModal.tsx";
+import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
+import WorkflowModal from "../components/WorkflowModal";
 
 const WorkflowSelection: React.FC = () => {
   return (

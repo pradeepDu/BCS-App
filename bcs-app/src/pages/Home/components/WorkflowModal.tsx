@@ -6,10 +6,10 @@ import {
   DialogTitle,
   DialogFooter,
   DialogTrigger,
-} from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Button } from "../ui/button";
+} from "../../../ui/dialog";
+import { Input } from "../../../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
+import { Button } from "../../../ui/button";
 
 interface WorkflowModalProps {
   triggerText: string;

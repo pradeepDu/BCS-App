@@ -1,9 +1,9 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Button } from "../ui/button"; // Shadcn Button
-import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar"; // Shadcn Avatar
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card"; // Shadcn Card
-import { signInWithGoogle, logout, auth } from "../Firebase/firebaseconfig";
+import { Button } from "../../ui/button"; // Shadcn Button
+import { Avatar, AvatarImage, AvatarFallback } from "../../ui/avatar"; // Shadcn Avatar
+import { Card, CardHeader, CardTitle, CardContent } from "../../ui/card"; // Shadcn Card
+import { signInWithGoogle, logout, auth } from "../../Firebase/firebaseconfig";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { useNavigate } from "react-router-dom"; // Import useNavigate
 
