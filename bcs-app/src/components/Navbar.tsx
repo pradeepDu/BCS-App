@@ -1,8 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Button } from "../components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
+import { Button } from "../ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar";
 
 const Navbar: React.FC = () => {
   return (
