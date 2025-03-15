@@ -4,10 +4,36 @@ import { Button } from "../ui/button";
 
 const FilePreview: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
+  // Handle file upload via file input
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       setFile(event.target.files[0]);
+    }
+  };
+
+  // Handle drag-and-drop events
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault(); // Prevent default behavior to allow dropping
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+
+    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+      setFile(event.dataTransfer.files[0]);
     }
   };
 
@@ -17,8 +43,15 @@ const FilePreview: React.FC = () => {
         <CardTitle>File Preview</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Drop Zone */}
         <div
-          className="border-dashed border-2 border-gray-600 p-4 rounded-md flex items-center justify-center cursor-pointer hover:bg-gray-700 h-64"
+          className={`border-dashed border-2 ${
+            isDragging ? "border-blue-500" : "border-gray-600"
+          } p-4 rounded-md flex items-center justify-center cursor-pointer hover:bg-gray-700 h-64`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
           onClick={() => document.getElementById("file-upload")?.click()}
         >
           {file ? (
@@ -27,12 +60,16 @@ const FilePreview: React.FC = () => {
             <p>Drag & Drop or Select a file</p>
           )}
         </div>
+
+        {/* Hidden File Input */}
         <input
           type="file"
           onChange={handleFileUpload}
           className="hidden"
           id="file-upload"
         />
+
+        {/* Select File Button */}
         <Button
           variant="outline"
           className="mt-2"

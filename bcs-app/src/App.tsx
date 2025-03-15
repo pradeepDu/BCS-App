@@ -1,8 +1,8 @@
+// src/App.tsx
 import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router } from "react-router-dom";
 import Navbar from "./components/Navbar";
-import Home from "./pages/Home";
-import Monitor from "./pages/MonitorPage";
+import AppRoutes from "../src/Routes/routes";
 
 const App: React.FC = () => {
   return (
@@ -10,10 +10,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-black text-white">
         <Navbar />
         <main className="pt-20">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/monitor" element={<Monitor />} />
-          </Routes>
+          <AppRoutes />
         </main>
       </div>
     </Router>
