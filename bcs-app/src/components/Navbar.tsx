@@ -31,7 +31,7 @@ const Navbar: React.FC = () => {
             <AvatarImage src="/logo.png" alt="Logo" />
             <AvatarFallback>BCS</AvatarFallback>
           </Avatar>
-          <h1 className="text-lg font-bold">My Dashboard</h1>
+          <h1 className="text-lg font-bold">BCS</h1>
         </div>
 
         {/* Navigation Links */}
