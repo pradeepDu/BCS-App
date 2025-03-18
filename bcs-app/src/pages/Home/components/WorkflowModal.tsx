@@ -2,92 +2,136 @@ import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
   DialogTrigger,
 } from "../../../ui/dialog";
-import { Input } from "../../../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
 import { Button } from "../../../ui/button";
+import { Input } from "../../../ui/input";
+import { Label } from "../../../ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
 
 interface WorkflowModalProps {
   triggerText: string;
+  onSubmit: (data: { 
+    file: File; 
+    outputFormat: string; 
+    watermark?: File 
+  }) => void;
+  isSubmitting?: boolean;
 }
 
-const WorkflowModal: React.FC<WorkflowModalProps> = ({ triggerText }) => {
+const WorkflowModal: React.FC<WorkflowModalProps> = ({ 
+  triggerText, 
+  onSubmit,
+  isSubmitting = false 
+}) => {
   const [file, setFile] = useState<File | null>(null);
-  const [translationType, setTranslationType] = useState<string>("");
-  const [watermarkLogo, setWatermarkLogo] = useState<string>("");
+  const [outputFormat, setOutputFormat] = useState<string>("mp4");
+  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
-  const handleSubmit = () => {
-    console.log({
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleWatermarkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setWatermarkFile(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) {
+      alert("Please select a file");
+      return;
+    }
+
+    onSubmit({
       file,
-      translationType,
-      watermarkLogo,
+      outputFormat,
+      ...(watermarkFile && { watermark: watermarkFile })
     });
-    alert("Form submitted!");
+    
+    // Don't close modal automatically if there's potential for an error
+    // setIsOpen(false);
   };
 
   return (
-    <Dialog>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary">{triggerText}</Button>
+        <Button variant="default" className="w-full">
+          {triggerText}
+        </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px] bg-gray-800 text-white">
+      <DialogContent className="bg-gray-700 text-white">
         <DialogHeader>
-          <DialogTitle>{triggerText} Configuration</DialogTitle>
+          <DialogTitle>{triggerText} Workflow</DialogTitle>
+          <DialogDescription className="text-gray-300">
+            Configure your {triggerText.toLowerCase()} settings
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          {/* File Upload */}
-          <div className="flex flex-col gap-2">
-            <label htmlFor="file-upload" className="text-sm font-medium">
-              Upload File
-            </label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="videoFile">Select Video File</Label>
             <Input
-              id="file-upload"
+              id="videoFile"
               type="file"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              accept="video/*"
+              onChange={handleFileChange}
+              className="bg-gray-600"
+              required
             />
           </div>
-
-          {/* Translation Type */}
-          <div className="flex flex-col gap-2">
-            <label htmlFor="translation-type" className="text-sm font-medium">
-              Translation Type
-            </label>
-            <Select onValueChange={setTranslationType}>
-              <SelectTrigger id="translation-type">
-                <SelectValue placeholder="Select a type" />
+          
+          <div className="space-y-2">
+            <Label htmlFor="outputFormat">Output Format</Label>
+            <Select
+              value={outputFormat}
+              onValueChange={setOutputFormat}
+            >
+              <SelectTrigger className="bg-gray-600">
+                <SelectValue placeholder="Select Format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="type1">Type 1</SelectItem>
-                <SelectItem value="type2">Type 2</SelectItem>
-                <SelectItem value="type3">Type 3</SelectItem>
+                <SelectItem value="mp4">MP4</SelectItem>
+                <SelectItem value="webm">WebM</SelectItem>
+                <SelectItem value="mov">MOV</SelectItem>
               </SelectContent>
             </Select>
           </div>
-
-          {/* Watermark Logo */}
-          <div className="flex flex-col gap-2">
-            <label htmlFor="watermark-logo" className="text-sm font-medium">
-              Watermark Logo
-            </label>
-            <Select onValueChange={setWatermarkLogo}>
-              <SelectTrigger id="watermark-logo">
-                <SelectValue placeholder="Select a logo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="logo1">Logo 1</SelectItem>
-                <SelectItem value="logo2">Logo 2</SelectItem>
-                <SelectItem value="logo3">Logo 3</SelectItem>
-              </SelectContent>
-            </Select>
+          
+          <div className="space-y-2">
+            <Label htmlFor="watermarkFile">Watermark Image (Optional)</Label>
+            <Input
+              id="watermarkFile"
+              type="file"
+              accept="image/*"
+              onChange={handleWatermarkChange}
+              className="bg-gray-600"
+            />
           </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={handleSubmit}>Submit</Button>
-        </DialogFooter>
+          
+          <div className="flex justify-end gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setIsOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={!file || isSubmitting}
+            >
+              {isSubmitting ? "Processing..." : "Process"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

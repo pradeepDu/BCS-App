@@ -2,14 +2,20 @@ import React, { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
 import { Button } from "../../../ui/button";
 
-const FilePreview: React.FC = () => {
+interface FilePreviewProps {
+  onFileSelect: (file: File) => void;
+}
+
+const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // Handle file upload via file input
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
-      setFile(event.target.files[0]);
+      const selectedFile = event.target.files[0];
+      setFile(selectedFile);
+      onFileSelect(selectedFile);
     }
   };
 
@@ -33,7 +39,9 @@ const FilePreview: React.FC = () => {
     setIsDragging(false);
 
     if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-      setFile(event.dataTransfer.files[0]);
+      const droppedFile = event.dataTransfer.files[0];
+      setFile(droppedFile);
+      onFileSelect(droppedFile);
     }
   };
 
@@ -64,6 +72,7 @@ const FilePreview: React.FC = () => {
         {/* Hidden File Input */}
         <input
           type="file"
+          accept="video/*"
           onChange={handleFileUpload}
           className="hidden"
           id="file-upload"

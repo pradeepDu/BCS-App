@@ -1,15 +1,17 @@
-import React from "react";
-import FilePreview from "../Home/components/FilePreview";
-import WorkflowSelection from "../Home/components/WorkflowSelection";
+import React, { useState } from "react";
+import FilePreview from "./components/FilePreview";
+import WorkflowSelection from "./components/WorkflowSelection";
 
 const Home: React.FC = () => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-8">
       <div className="col-span-1">
-        <FilePreview />
+        <FilePreview onFileSelect={setSelectedFile} />
       </div>
       <div className="col-span-1">
-        <WorkflowSelection />
+        {selectedFile && <WorkflowSelection />}
       </div>
     </div>
   );
