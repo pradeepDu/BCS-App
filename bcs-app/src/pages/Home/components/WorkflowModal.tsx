@@ -15,50 +15,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 interface WorkflowModalProps {
   triggerText: string;
   onSubmit: (data: { 
-    file: File; 
     outputFormat: string; 
-    watermark?: File 
+    watermark?: File;
+    useWatermark: boolean;
   }) => void;
   isSubmitting?: boolean;
+  selectedFile: File;
 }
 
 const WorkflowModal: React.FC<WorkflowModalProps> = ({ 
   triggerText, 
   onSubmit,
-  isSubmitting = false 
+  isSubmitting = false,
+  selectedFile
 }) => {
-  const [file, setFile] = useState<File | null>(null);
   const [outputFormat, setOutputFormat] = useState<string>("mp4");
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [useWatermark, setUseWatermark] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState(false);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
 
   const handleWatermarkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setWatermarkFile(e.target.files[0]);
+      setUseWatermark(true);
+    } else {
+      setUseWatermark(false);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      alert("Please select a file");
-      return;
-    }
 
     onSubmit({
-      file,
       outputFormat,
-      ...(watermarkFile && { watermark: watermarkFile })
+      ...(watermarkFile && { watermark: watermarkFile }),
+      useWatermark: useWatermark && watermarkFile !== null
     });
     
-    // Don't close modal automatically if there's potential for an error
-    // setIsOpen(false);
+    setIsOpen(false);
   };
 
   return (
@@ -72,22 +66,10 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
         <DialogHeader>
           <DialogTitle>{triggerText} Workflow</DialogTitle>
           <DialogDescription className="text-gray-300">
-            Configure your {triggerText.toLowerCase()} settings
+            Configure your {triggerText.toLowerCase()} settings for: {selectedFile.name}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="videoFile">Select Video File</Label>
-            <Input
-              id="videoFile"
-              type="file"
-              accept="video/*"
-              onChange={handleFileChange}
-              className="bg-gray-600"
-              required
-            />
-          </div>
-          
           <div className="space-y-2">
             <Label htmlFor="outputFormat">Output Format</Label>
             <Select
@@ -101,6 +83,8 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
                 <SelectItem value="mp4">MP4</SelectItem>
                 <SelectItem value="webm">WebM</SelectItem>
                 <SelectItem value="mov">MOV</SelectItem>
+                <SelectItem value="avi">AVI</SelectItem>
+                <SelectItem value="mkv">MKV</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -126,7 +110,7 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
             </Button>
             <Button 
               type="submit" 
-              disabled={!file || isSubmitting}
+              disabled={isSubmitting}
             >
               {isSubmitting ? "Processing..." : "Process"}
             </Button>

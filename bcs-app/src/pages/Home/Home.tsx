@@ -11,7 +11,8 @@ const Home: React.FC = () => {
         <FilePreview onFileSelect={setSelectedFile} />
       </div>
       <div className="col-span-1">
-        {selectedFile && <WorkflowSelection />}
+        {selectedFile && <WorkflowSelection
+          initialFile={ selectedFile} />}
       </div>
     </div>
   );
