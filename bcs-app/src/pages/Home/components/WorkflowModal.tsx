@@ -21,18 +21,21 @@ interface WorkflowModalProps {
   }) => void;
   isSubmitting?: boolean;
   selectedFile: File;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const WorkflowModal: React.FC<WorkflowModalProps> = ({ 
   triggerText, 
   onSubmit,
   isSubmitting = false,
-  selectedFile
+  selectedFile,
+  open,
+  onOpenChange
 }) => {
   const [outputFormat, setOutputFormat] = useState<string>("mp4");
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [useWatermark, setUseWatermark] = useState<boolean>(false);
-  const [isOpen, setIsOpen] = useState(false);
 
   const handleWatermarkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -51,12 +54,10 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
       ...(watermarkFile && { watermark: watermarkFile }),
       useWatermark: useWatermark && watermarkFile !== null
     });
-    
-    setIsOpen(false);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant="default" className="w-full">
           {triggerText}
@@ -104,7 +105,7 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
             <Button 
               type="button" 
               variant="outline" 
-              onClick={() => setIsOpen(false)}
+              onClick={() => onOpenChange?.(false)}
             >
               Cancel
             </Button>

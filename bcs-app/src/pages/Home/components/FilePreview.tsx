@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
 import { Button } from "../../../ui/button";
-import { auth, signInWithGoogle } from "../../../Firebase/firebaseconfig"; // Import from your Firebase config
+import { auth } from "../../../Firebase/firebaseconfig";
 import { onAuthStateChanged } from "firebase/auth";
-import WorkflowModal from "./WorkflowModal";
 
 interface FilePreviewProps {
   onFileSelect: (file: File) => void;
@@ -58,33 +57,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
     }
   };
 
-  // Handle workflow submission
-  const handleWorkflowSubmit = (data: { 
-    outputFormat: string; 
-    watermark?: File;
-    useWatermark: boolean;
-  }) => {
-    if (!file) {
-      alert("Please select a file first");
-      return;
-    }
-
-    if (!currentUser) {
-      alert("Please log in to use this service");
-      return;
-    }
-
-    // Process the file with the workflow settings
-    // Combine file from FilePreview with other settings from WorkflowModal
-    const fullData = {
-      file,
-      ...data
-    };
-    
-    console.log("Processing:", fullData);
-    // Your processing logic here
-  };
-
   return (
     <Card className="p-4 h-full bg-gray-800 text-white">
       <CardHeader>
@@ -126,26 +98,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
         >
           Select File
         </Button>
-
-        {/* Workflow Modal */}
-        {file ? (
-          <div className="mt-4">
-            {currentUser ? (
-              <WorkflowModal 
-                triggerText="Transcode" 
-                onSubmit={handleWorkflowSubmit} 
-                selectedFile={file}
-              />
-            ) : (
-              <div className="mt-4 text-center">
-                <p className="mb-2">Log in to transcode this file</p>
-                <Button variant="default" onClick={signInWithGoogle}>
-                  Sign in with Google
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : null}
       </CardContent>
     </Card>
   );
