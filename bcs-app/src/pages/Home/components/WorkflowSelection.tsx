@@ -95,6 +95,31 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       
       dispatchProgressUpdate(4, 80, "Finalizing output...");
       
+      // Record job history with user information
+      const jobHistoryResponse = await fetch('http://localhost:8000/api/job-history/jobs/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          user_id: currentUser.uid,
+          user_name: currentUser.displayName,
+          user_email: currentUser.email,
+          file_name: initialFile.name,
+          file_size: initialFile.size,
+          file_type: initialFile.type,
+          status: 'completed',
+          timestamp: new Date().toISOString(),
+          output_format: formData.outputFormat || "mp4",
+          processing_type: formData.useWatermark ? 'watermark' : 'transcode'
+        })
+      });
+
+      if (!jobHistoryResponse.ok) {
+        console.error("Failed to record job history:", await jobHistoryResponse.text());
+      }
+      
       onProcessingComplete(url, fileName, formData.outputFormat || "mp4");
       
       dispatchProgressUpdate(5, 100, "Processing completed successfully!");
@@ -125,7 +150,7 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
         ) : (
           <div className="text-center py-4">
             <p className="mb-4">Please log in to process your video</p>
-            <Button variant="default" onClick={signInWithGoogle}>
+            <Button variant="default" onClick={signInWithGoogle} className="bg-white text-black hover:bg-gray-100">
               Sign in with Google
             </Button>
           </div>

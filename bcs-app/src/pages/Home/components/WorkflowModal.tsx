@@ -59,7 +59,7 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="default" className="w-full">
+        <Button variant="default" className="w-full bg-white text-black hover:bg-gray-100">
           {triggerText}
         </Button>
       </DialogTrigger>
@@ -106,12 +106,14 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({
               type="button" 
               variant="outline" 
               onClick={() => onOpenChange?.(false)}
+              className="bg-white text-black hover:bg-gray-100"
             >
               Cancel
             </Button>
             <Button 
               type="submit" 
               disabled={isSubmitting}
+              className="bg-white text-black hover:bg-gray-100"
             >
               {isSubmitting ? "Processing..." : "Process"}
             </Button>

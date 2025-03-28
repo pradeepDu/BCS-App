@@ -93,7 +93,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
         {/* Select File Button */}
         <Button
           variant="outline"
-          className="mt-2"
+          className="mt-2 bg-white text-black hover:bg-gray-100"
           onClick={() => document.getElementById("file-upload")?.click()}
         >
           Select File

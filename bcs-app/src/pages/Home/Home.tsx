@@ -62,7 +62,7 @@ const Home: React.FC = () => {
                   download={`${processedFileName}.${processedFileFormat}`}
                   className="block"
                 >
-                  <Button variant="default" className="w-full">
+                  <Button variant="default" className="w-full bg-white text-black hover:bg-gray-100">
                     Download Processed Video
                   </Button>
                 </a>

@@ -12,6 +12,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
+# MongoDB settings
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://dukemarquis2004:rBuLYvMAPm5fg35A@cluster0.tayfsea.mongodb.net/")
+MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "bcs_platform")
+
 # Supported formats
 SUPPORTED_FORMATS = ["mp4", "webm", "avi", "mov", "flv"]
 
