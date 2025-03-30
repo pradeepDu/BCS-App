@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import FilePreview from "./components/FilePreview";
 import WorkflowSelection from "./components/WorkflowSelection";
 import Monitor from "../Monitor/Monitor";
@@ -10,15 +10,39 @@ const Home: React.FC = () => {
   const [processedFileUrl, setProcessedFileUrl] = useState<string | null>(null);
   const [processedFileName, setProcessedFileName] = useState<string>("");
   const [processedFileFormat, setProcessedFileFormat] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+
+  // Cleanup processed file URL when component unmounts or when new file is selected
+  useEffect(() => {
+    return () => {
+      if (processedFileUrl) {
+        URL.revokeObjectURL(processedFileUrl);
+      }
+    };
+  }, [processedFileUrl]);
 
   const handleFileSelect = (file: File) => {
+    // Cleanup previous processed file URL if exists
+    if (processedFileUrl) {
+      URL.revokeObjectURL(processedFileUrl);
+    }
     setSelectedFile(file);
+    setError(null);
   };
 
   const handleProcessingComplete = (url: string, fileName: string, format: string) => {
     setProcessedFileUrl(url);
     setProcessedFileName(fileName);
     setProcessedFileFormat(format);
+    setError(null);
+  };
+
+  const handleError = (errorMessage: string) => {
+    setError(errorMessage);
+    if (processedFileUrl) {
+      URL.revokeObjectURL(processedFileUrl);
+      setProcessedFileUrl(null);
+    }
   };
 
   return (
@@ -29,6 +53,7 @@ const Home: React.FC = () => {
           <WorkflowSelection 
             initialFile={selectedFile}
             onProcessingComplete={handleProcessingComplete}
+            onError={handleError}
           />
         )}
       </div>
@@ -37,7 +62,13 @@ const Home: React.FC = () => {
           <Monitor 
             file={selectedFile}
             onProcessingComplete={handleProcessingComplete}
+            onError={handleError}
           />
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 p-4 bg-red-900 text-white rounded-lg">
+          {error}
         </div>
       )}
       {processedFileUrl && (
@@ -60,7 +91,7 @@ const Home: React.FC = () => {
                 <a 
                   href={processedFileUrl} 
                   download={`${processedFileName}.${processedFileFormat}`}
-                  className="block"
+                  className="block w-full"
                 >
                   <Button variant="default" className="w-full bg-white text-black hover:bg-gray-100">
                     Download Processed Video

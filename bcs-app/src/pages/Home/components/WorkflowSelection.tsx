@@ -8,14 +8,15 @@ import { onAuthStateChanged } from "firebase/auth";
 interface WorkflowSelectionProps {
   initialFile: File;
   onProcessingComplete: (processedFileUrl: string, fileName: string, format: string) => void;
+  onError: (errorMessage: string) => void;
 }
 
 const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({ 
   initialFile,
-  onProcessingComplete
+  onProcessingComplete,
+  onError
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
   const [showModal, setShowModal] = useState(false);
 
@@ -40,12 +41,11 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
     useWatermark: boolean;
   }) => {
     if (!currentUser) {
-      setError("Please log in to use this service");
+      onError("Please log in to use this service");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
     setShowModal(false);
     
     try {
@@ -96,28 +96,33 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       dispatchProgressUpdate(4, 80, "Finalizing output...");
       
       // Record job history with user information
-      const jobHistoryResponse = await fetch('http://localhost:8000/api/job-history/jobs/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          user_id: currentUser.uid,
-          user_name: currentUser.displayName,
-          user_email: currentUser.email,
-          file_name: initialFile.name,
-          file_size: initialFile.size,
-          file_type: initialFile.type,
-          status: 'completed',
-          timestamp: new Date().toISOString(),
-          output_format: formData.outputFormat || "mp4",
-          processing_type: formData.useWatermark ? 'watermark' : 'transcode'
-        })
-      });
+      try {
+        const jobHistoryResponse = await fetch('http://localhost:8000/api/job-history/jobs/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: crypto.randomUUID(),
+            user_id: currentUser.uid,
+            user_name: currentUser.displayName,
+            user_email: currentUser.email,
+            file_name: initialFile.name,
+            file_size: initialFile.size,
+            file_type: initialFile.type,
+            status: 'completed',
+            timestamp: new Date().toISOString(),
+            output_format: formData.outputFormat || "mp4",
+            processing_type: formData.useWatermark ? 'watermark' : 'transcode'
+          })
+        });
 
-      if (!jobHistoryResponse.ok) {
-        console.error("Failed to record job history:", await jobHistoryResponse.text());
+        if (!jobHistoryResponse.ok) {
+          console.error("Failed to record job history:", await jobHistoryResponse.text());
+        }
+      } catch (error) {
+        console.error("Error recording job history:", error);
+        // Don't throw here, as the main processing was successful
       }
       
       onProcessingComplete(url, fileName, formData.outputFormat || "mp4");
@@ -125,7 +130,7 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       dispatchProgressUpdate(5, 100, "Processing completed successfully!");
     } catch (error) {
       console.error("An error occurred during processing:", error);
-      setError(error instanceof Error ? error.message : String(error));
+      onError(error instanceof Error ? error.message : String(error));
       dispatchProgressUpdate(-1, 0, `Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
@@ -153,12 +158,6 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
             <Button variant="default" onClick={signInWithGoogle} className="bg-white text-black hover:bg-gray-100">
               Sign in with Google
             </Button>
-          </div>
-        )}
-        
-        {error && (
-          <div className="mt-4 p-3 bg-red-900 text-white rounded">
-            Error: {error}
           </div>
         )}
       </CardContent>

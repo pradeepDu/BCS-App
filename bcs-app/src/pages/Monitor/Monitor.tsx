@@ -26,9 +26,10 @@ interface ProgressUpdateEvent extends Event {
 interface MonitorProps {
   file: File;
   onProcessingComplete: (processedFileUrl: string, fileName: string, format: string) => void;
+  onError: (errorMessage: string) => void;
 }
 
-const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete }) => {
+const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete, onError }) => {
   const [stages, setStages] = useState<ProcessStage[]>([
     { name: 'Initializing', status: 'pending', progress: 0 },
     { name: 'Reading Video', status: 'pending', progress: 0 },
@@ -38,6 +39,45 @@ const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete }) => {
   ]);
   const [currentStage, setCurrentStage] = useState(0);
   const [logs, setLogs] = useState<Log[]>([]);
+
+  const handleProgressUpdate = (event: ProgressUpdateEvent) => {
+    const { stage, progress, message } = event.detail;
+    
+    // Update stages
+    setStages(prev => prev.map((s, index) => {
+      if (index === stage) {
+        return {
+          ...s,
+          status: stage === -1 ? 'error' : 'in-progress',
+          progress: progress
+        };
+      } else if (index < stage) {
+        return {
+          ...s,
+          status: 'completed',
+          progress: 100
+        };
+      }
+      return s;
+    }));
+
+    // Update current stage
+    if (stage !== -1) {
+      setCurrentStage(stage);
+    }
+
+    // Add log entry
+    setLogs(prev => [...prev, {
+      timestamp: new Date(),
+      message: message,
+      level: stage === -1 ? 'error' : 'info'
+    }]);
+
+    // Handle error stage
+    if (stage === -1) {
+      onError(message);
+    }
+  };
 
   // Initialize monitoring
   useEffect(() => {
@@ -51,43 +91,9 @@ const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete }) => {
 
   // Listen for progress updates
   useEffect(() => {
-    const handleProgressUpdate = (event: ProgressUpdateEvent) => {
-      const { stage, progress, message } = event.detail;
-      
-      // Update stages
-      setStages(prev => prev.map((s, index) => {
-        if (index === stage) {
-          return {
-            ...s,
-            status: stage === -1 ? 'error' : 'in-progress',
-            progress: progress
-          };
-        } else if (index < stage) {
-          return {
-            ...s,
-            status: 'completed',
-            progress: 100
-          };
-        }
-        return s;
-      }));
-
-      // Update current stage
-      if (stage !== -1) {
-        setCurrentStage(stage);
-      }
-
-      // Add log entry
-      setLogs(prev => [...prev, {
-        timestamp: new Date(),
-        message: message,
-        level: stage === -1 ? 'error' : 'info'
-      }]);
-    };
-
     window.addEventListener('progressUpdate', handleProgressUpdate as EventListener);
     return () => window.removeEventListener('progressUpdate', handleProgressUpdate as EventListener);
-  }, []);
+  }, [onError]);
 
   return (
     <div className="space-y-4">
