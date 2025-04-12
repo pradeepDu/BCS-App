@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent } from "../../ui/card";
+import { Card } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { auth, signInWithGoogle } from "../../Firebase/firebaseconfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -19,17 +19,10 @@ interface JobHistory {
   processing_type: 'transcode' | 'watermark';
 }
 
-interface UserInfo {
-  displayName: string | null;
-  email: string | null;
-  photoURL: string | null;
-}
-
 type ViewFilter = 'all' | 'my-jobs' | 'others';
 
 const MonitorPage: React.FC = () => {
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [jobHistory, setJobHistory] = useState<JobHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,14 +32,8 @@ const MonitorPage: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        setUserInfo({
-          displayName: user.displayName,
-          email: user.email,
-          photoURL: user.photoURL
-        });
         await fetchJobs();
       } else {
-        setUserInfo(null);
         setJobHistory([]);
       }
       setLoading(false);
