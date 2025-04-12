@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
 import WorkflowModal from "./WorkflowModal";
 import { Button } from "../../../ui/button";
 import { auth, signInWithGoogle } from "../../../Firebase/firebaseconfig";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
 
 interface WorkflowSelectionProps {
   initialFile: File;
@@ -18,16 +18,32 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
   onError
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState(auth.currentUser);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setIsAuthLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, []);
+
+  const handleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      await signInWithGoogle();
+    } catch (error) {
+      console.error('Sign in error:', error);
+      onError('Failed to sign in. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const dispatchProgressUpdate = (stage: number, progress: number, message: string) => {
     const event = new CustomEvent('progressUpdate', {
@@ -36,42 +52,106 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
     window.dispatchEvent(event);
   };
 
-  const retryOperation = async (operation: () => Promise<Response>, maxRetries = 3) => {
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        return await operation();
-      } catch (error) {
-        if (i === maxRetries - 1) throw error;
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+  const checkServerHealth = async (): Promise<boolean> => {
+    try {
+      const response = await fetch('http://localhost:8000/api/health');
+      const data = await response.json();
+      
+      if (data.status === 'unhealthy') {
+        console.error('Server health check failed:', data.error);
+        return false;
       }
+      
+      return data.status === 'healthy' && data.database === 'connected';
+    } catch (error) {
+      console.error('Server health check failed:', error);
+      return false;
     }
   };
 
-  const uploadFileInChunks = async (file: File, endpoint: string) => {
+  const retryOperation = async (
+    operation: () => Promise<Response>,
+    maxRetries: number = 3
+  ): Promise<Response> => {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Check server health before each attempt
+        const isHealthy = await checkServerHealth();
+        if (!isHealthy) {
+          throw new Error('Server is not responding. Please try again later.');
+        }
+        
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`Attempt ${attempt} failed:`, error);
+        
+        if (attempt < maxRetries) {
+          // Exponential backoff with jitter
+          const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10000);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError || new Error('Operation failed after maximum retries');
+  };
+
+  const uploadFileInChunks = async (file: File, endpoint: string): Promise<string> => {
     const chunkSize = 1024 * 1024; // 1MB chunks
     const chunks = Math.ceil(file.size / chunkSize);
-    const formData = new FormData();
+    let uploadId: string | null = null;
     
     for (let i = 0; i < chunks; i++) {
       const start = i * chunkSize;
       const end = Math.min(start + chunkSize, file.size);
       const chunk = file.slice(start, end);
       
-      formData.append(`chunk_${i}`, chunk);
+      const formData = new FormData();
+      formData.append('chunk', chunk);
       formData.append('total_chunks', chunks.toString());
       formData.append('current_chunk', i.toString());
+      if (uploadId) {
+        formData.append('upload_id', uploadId);
+      }
       
-      await retryOperation(async () => {
-        const response = await fetch(`http://localhost:8000${endpoint}/chunk`, {
-          method: "POST",
-          body: formData,
+      try {
+        const response = await retryOperation(async () => {
+          const res = await fetch(`http://localhost:8000/api${endpoint}/chunk`, {
+            method: "POST",
+            body: formData,
+          });
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Upload failed: ${res.statusText} - ${errorText}`);
+          }
+          return res;
         });
-        if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
-        return response;
-      });
-      
-      dispatchProgressUpdate(1, (i / chunks) * 100, `Uploading chunk ${i + 1}/${chunks}`);
+
+        const data = await response.json();
+        
+        if (data.status === 'complete') {
+          uploadId = data.file_id;
+        } else if (data.upload_id) {
+          uploadId = data.upload_id;
+        }
+        
+        dispatchProgressUpdate(1, (i / chunks) * 100, `Uploading chunk ${i + 1}/${chunks}`);
+      } catch (error) {
+        if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+          throw new Error('Connection refused. Please make sure the backend server is running.');
+        }
+        throw error;
+      }
     }
+    
+    if (!uploadId) {
+      throw new Error('Upload failed: No file ID received');
+    }
+    
+    return uploadId;
   };
 
   const handleProcessing = async (formData: { 
@@ -88,16 +168,22 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
     setShowModal(false);
     
     try {
+      // Check server health before starting
+      const isHealthy = await checkServerHealth();
+      if (!isHealthy) {
+        throw new Error('Server is not responding. Please try again later.');
+      }
+
       dispatchProgressUpdate(0, 0, "Initializing video processing...");
       
       const endpoint = formData.useWatermark ? "/add-watermark" : "/transcode";
       
       // Upload file in chunks
-      await uploadFileInChunks(initialFile, endpoint);
+      const uploadId = await uploadFileInChunks(initialFile, endpoint);
       
       // Send processing request
       const processData = new FormData();
-      processData.append("file_name", initialFile.name);
+      processData.append("file_name", uploadId);
       processData.append("output_format", formData.outputFormat || "mp4");
       
       if (formData.useWatermark && formData.watermark) {
@@ -107,12 +193,17 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       dispatchProgressUpdate(2, 40, "Processing video...");
       
       const response = await retryOperation(async () => {
-        const res = await fetch(`http://localhost:8000${endpoint}/process`, {
+        const res = await fetch(`http://localhost:8000/api${endpoint}/process`, {
           method: "POST",
           body: processData,
+          credentials: 'include',
+          headers: {
+            'Accept': 'video/*'
+          }
         });
         if (!res.ok) {
           const errorText = await res.text();
+          console.error("Server response:", errorText);
           throw new Error(`Error: ${res.statusText} - ${errorText}`);
         }
         return res;
@@ -120,10 +211,11 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
 
       dispatchProgressUpdate(3, 60, "Applying transformations...");
 
-      if (!response) {
-        throw new Error("Response is undefined");
-      }
       const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new Error("Received empty file from server");
+      }
+      
       const url = URL.createObjectURL(blob);
       const fileName = formData.useWatermark ? "watermarked-video" : "transcoded-video";
       
@@ -131,7 +223,7 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       
       // Record job history with retry mechanism
       await retryOperation(async () => {
-        const jobHistoryResponse = await fetch('http://localhost:8000/api/job-history/jobs/', {
+        const response = await fetch('http://localhost:8000/api/job-history/jobs/', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -151,10 +243,10 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
           })
         });
 
-        if (!jobHistoryResponse.ok) {
+        if (!response.ok) {
           throw new Error("Failed to record job history");
         }
-        return jobHistoryResponse; // Ensure a Response object is returned
+        return response;
       });
       
       onProcessingComplete(url, fileName, formData.outputFormat || "mp4");
@@ -175,7 +267,11 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
         <CardTitle>Video Processing Workflow</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {currentUser ? (
+        {isAuthLoading ? (
+          <div className="text-center py-4">
+            <p>Loading authentication state...</p>
+          </div>
+        ) : currentUser ? (
           <WorkflowModal 
             triggerText="Process Video"
             onSubmit={handleProcessing}
@@ -187,8 +283,13 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
         ) : (
           <div className="text-center py-4">
             <p className="mb-4">Please log in to process your video</p>
-            <Button variant="default" onClick={signInWithGoogle} className="bg-white text-black hover:bg-gray-100">
-              Sign in with Google
+            <Button 
+              variant="default" 
+              onClick={handleSignIn} 
+              className="bg-white text-black hover:bg-gray-100"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Signing in...' : 'Sign in with Google'}
             </Button>
           </div>
         )}

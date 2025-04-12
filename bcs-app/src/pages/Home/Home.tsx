@@ -99,7 +99,6 @@ const Home: React.FC = () => {
         <div className="mt-8">
           <Monitor 
             file={selectedFile}
-            onProcessingComplete={handleProcessingComplete}
             onError={handleError}
           />
         </div>

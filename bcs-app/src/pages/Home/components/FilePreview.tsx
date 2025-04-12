@@ -1,32 +1,19 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
 import { Button } from "../../../ui/button";
-import { auth } from "../../../Firebase/firebaseconfig";
-import { onAuthStateChanged } from "firebase/auth";
 
 interface FilePreviewProps {
   onFileSelect: (file: File) => void;
 }
 
 const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
-  const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [currentUser, setCurrentUser] = useState(auth.currentUser);
-
-  // Set up auth state listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-
-    return () => unsubscribe();
-  }, []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle file upload via file input
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       const selectedFile = event.target.files[0];
-      setFile(selectedFile);
       onFileSelect(selectedFile);
     }
   };
@@ -43,7 +30,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault(); // Prevent default behavior to allow dropping
+    event.preventDefault();
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
@@ -52,7 +39,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
 
     if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
       const droppedFile = event.dataTransfer.files[0];
-      setFile(droppedFile);
       onFileSelect(droppedFile);
     }
   };
@@ -63,7 +49,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
         <CardTitle>File Preview</CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Drop Zone */}
         <div
           className={`border-dashed border-2 ${
             isDragging ? "border-blue-500" : "border-gray-600"
@@ -72,29 +57,23 @@ const FilePreview: React.FC<FilePreviewProps> = ({ onFileSelect }) => {
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          onClick={() => document.getElementById("file-upload")?.click()}
+          onClick={() => fileInputRef.current?.click()}
         >
-          {file ? (
-            <p>{file.name}</p>
-          ) : (
-            <p>Drag & Drop or Select a file</p>
-          )}
+          <p>Drag & Drop or Select a file</p>
         </div>
 
-        {/* Hidden File Input */}
         <input
           type="file"
           accept="video/*"
           onChange={handleFileUpload}
           className="hidden"
-          id="file-upload"
+          ref={fileInputRef}
         />
 
-        {/* Select File Button */}
         <Button
           variant="outline"
           className="mt-2 bg-white text-black hover:bg-gray-100"
-          onClick={() => document.getElementById("file-upload")?.click()}
+          onClick={() => fileInputRef.current?.click()}
         >
           Select File
         </Button>

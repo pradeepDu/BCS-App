@@ -25,11 +25,10 @@ interface ProgressUpdateEvent extends Event {
 
 interface MonitorProps {
   file: File;
-  onProcessingComplete: (processedFileUrl: string, fileName: string, format: string) => void;
   onError: (errorMessage: string) => void;
 }
 
-const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete, onError }) => {
+const Monitor: React.FC<MonitorProps> = ({ file, onError }) => {
   const [stages, setStages] = useState<ProcessStage[]>([
     { name: 'Initializing', status: 'pending', progress: 0 },
     { name: 'Reading Video', status: 'pending', progress: 0 },

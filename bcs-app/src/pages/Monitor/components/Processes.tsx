@@ -1,6 +1,5 @@
 import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
-import { Progress } from "../../../ui/progress";
 
 interface ProcessStage {
   name: string;
@@ -13,37 +12,32 @@ interface ProcessesProps {
   currentStage: number;
 }
 
-const Processes: React.FC<ProcessesProps> = ({ stages, currentStage }) => {
-  const getStatusColor = (status: ProcessStage['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-500';
-      case 'in-progress':
-        return 'bg-blue-500';
-      case 'error':
-        return 'bg-red-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
+const Processes: React.FC<ProcessesProps> = ({ stages }) => {
   return (
-    <Card className="p-4 h-full bg-gray-800 text-white">
+    <Card className="bg-gray-800 text-white">
       <CardHeader>
-        <CardTitle>Processes</CardTitle>
+        <CardTitle>Processing Stages</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {stages.map((stage, index) => (
+          {stages.map((stage) => (
             <div key={stage.name} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${getStatusColor(stage.status)}`} />
-                  <span className="text-sm font-medium">{stage.name}</span>
-                </div>
-                <span className="text-sm text-gray-400">{stage.progress}%</span>
+              <div className="flex justify-between items-center">
+                <span className="font-medium">{stage.name}</span>
+                <span className="text-sm">{stage.progress}%</span>
               </div>
-              <Progress value={stage.progress} className="h-1" />
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div
+                  className={`h-full rounded-full ${
+                    stage.status === 'completed'
+                      ? 'bg-green-500'
+                      : stage.status === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${stage.progress}%` }}
+                />
+              </div>
             </div>
           ))}
         </div>

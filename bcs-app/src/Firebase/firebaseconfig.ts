@@ -12,7 +12,24 @@ const firebaseConfig = {
   };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+// Configure Google provider
+provider.setCustomParameters({
+  prompt: 'select_account'
+});
+
+// Custom sign-in function that handles popup properly
+const signInWithGoogle = async () => {
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return result;
+  } catch (error) {
+    console.error('Error during sign in:', error);
+    throw error;
+  }
+};
+
+export { auth, signInWithGoogle };
 export const logout = () => signOut(auth);

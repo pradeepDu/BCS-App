@@ -2,11 +2,11 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "../../ui/card";
 import { Button } from "../../ui/button";
-import { auth } from "../../Firebase/firebaseconfig";
+import { auth, signInWithGoogle } from "../../Firebase/firebaseconfig";
 import { onAuthStateChanged } from "firebase/auth";
 
 interface JobHistory {
-  id: string;
+  _id: string;  // Changed from id to _id to match MongoDB
   user_id: string;
   user_name: string | null;
   user_email: string | null;
@@ -60,12 +60,14 @@ const MonitorPage: React.FC = () => {
       setLoading(true);
       const response = await fetch('http://localhost:8000/api/job-history/jobs/');
       if (!response.ok) {
-        throw new Error('Failed to fetch job history');
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch job history: ${errorText}`);
       }
       const data = await response.json();
       setJobHistory(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load job history');
+      console.error('Error fetching jobs:', err);
     } finally {
       setLoading(false);
     }
@@ -93,106 +95,103 @@ const MonitorPage: React.FC = () => {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeInOut" }}
-      className="max-w-4xl mx-auto my-8"
+      className="w-full min-h-screen bg-gray-900 p-4"
     >
-      <Card className="p-6 bg-gray-800 text-white shadow-lg rounded-lg">
+      <Card className="w-full bg-gray-800 text-white shadow-lg rounded-lg">
         {currentUser ? (
-          <div className="space-y-8">
-            <div className="border-b border-gray-700 pb-6">
-              <div className="flex items-center space-x-4 mb-4">
-                {userInfo?.photoURL && (
-                  <img 
-                    src={userInfo.photoURL} 
-                    alt="Profile" 
-                    className="w-12 h-12 rounded-full"
-                  />
-                )}
-                <div>
-                  <h2 className="text-2xl font-bold">Job History</h2>
-                  <div className="text-gray-400">
-                    <p className="font-medium">{userInfo?.displayName || 'User'}</p>
-                    <p className="text-sm">{userInfo?.email}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex space-x-2 mt-4">
+          <div className="space-y-8 p-6">
+            <div className="flex justify-between items-center">
+              <h1 className="text-2xl font-bold">Job History</h1>
+              <div className="flex space-x-4">
                 <Button
                   variant={viewFilter === 'all' ? 'default' : 'outline'}
                   onClick={() => setViewFilter('all')}
-                  className="bg-white text-black hover:bg-gray-100"
+                  className={`${
+                    viewFilter === 'all' 
+                      ? 'bg-black text-white hover:bg-gray-800' 
+                      : 'bg-white text-black hover:bg-gray-100 border-black'
+                  }`}
                 >
                   All Jobs
                 </Button>
                 <Button
                   variant={viewFilter === 'my-jobs' ? 'default' : 'outline'}
                   onClick={() => setViewFilter('my-jobs')}
-                  className="bg-white text-black hover:bg-gray-100"
+                  className={`${
+                    viewFilter === 'my-jobs' 
+                      ? 'bg-black text-white hover:bg-gray-800' 
+                      : 'bg-white text-black hover:bg-gray-100 border-black'
+                  }`}
                 >
                   My Jobs
                 </Button>
                 <Button
                   variant={viewFilter === 'others' ? 'default' : 'outline'}
                   onClick={() => setViewFilter('others')}
-                  className="bg-white text-black hover:bg-gray-100"
+                  className={`${
+                    viewFilter === 'others' 
+                      ? 'bg-black text-white hover:bg-gray-800' 
+                      : 'bg-white text-black hover:bg-gray-100 border-black'
+                  }`}
                 >
                   Others' Jobs
                 </Button>
               </div>
             </div>
-            
+
             {loading ? (
-              <div className="flex justify-center items-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
               </div>
             ) : error ? (
-              <div className="text-center py-8">
-                <p className="text-red-400">{error}</p>
+              <div className="text-red-500 text-center p-4">
+                {error}
               </div>
-            ) : filteredJobs.length > 0 ? (
-              <div className="space-y-4">
-                {filteredJobs.map((job) => (
-                  <Card key={job.id} className="bg-gray-700">
-                    <CardContent className="p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="flex items-center space-x-2 mb-2">
-                            <h3 className="font-semibold text-lg">{job.file_name}</h3>
-                            <span className="text-sm text-gray-400">
-                              by {job.user_name || 'Unknown User'}
-                            </span>
-                          </div>
-                          <p className="text-gray-400">Size: {formatFileSize(job.file_size)}</p>
-                          <p className="text-gray-400">Type: {job.file_type}</p>
-                          <p className="text-gray-400 text-sm">Email: {job.user_email || 'N/A'}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`px-2 py-1 rounded-full text-sm ${
+            ) : filteredJobs.length === 0 ? (
+              <div className="text-center p-4">
+                No jobs found
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-700">
+                      <th className="text-left p-4">File Name</th>
+                      <th className="text-left p-4">User</th>
+                      <th className="text-left p-4">Type</th>
+                      <th className="text-left p-4">Size</th>
+                      <th className="text-left p-4">Status</th>
+                      <th className="text-left p-4">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredJobs.map((job) => (
+                      <tr key={job._id} className="border-b border-gray-700 hover:bg-gray-700">
+                        <td className="p-4">{job.file_name}</td>
+                        <td className="p-4">{job.user_name || job.user_email || 'Unknown'}</td>
+                        <td className="p-4 capitalize">{job.processing_type}</td>
+                        <td className="p-4">{formatFileSize(job.file_size)}</td>
+                        <td className="p-4">
+                          <span className={`px-2 py-1 rounded-full ${
                             job.status === 'completed' ? 'bg-green-500' : 'bg-red-500'
                           }`}>
                             {job.status}
                           </span>
-                          <p className="text-gray-400 mt-2">
-                            {new Date(job.timestamp).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}
-                          </p>
-                          <p className="text-gray-400">
-                            {job.processing_type === 'transcode' ? 'Transcoded' : 'Watermarked'} to {job.output_format}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-400">No jobs found for the selected filter.</p>
+                        </td>
+                        <td className="p-4">{new Date(job.timestamp).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
         ) : (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-lg">Please log in to view job history.</p>
+          <div className="p-6 text-center">
+            <h2 className="text-xl mb-4">Please sign in to view job history</h2>
+            <Button onClick={signInWithGoogle}>
+              Sign In
+            </Button>
           </div>
         )}
       </Card>
