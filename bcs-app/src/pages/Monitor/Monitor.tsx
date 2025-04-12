@@ -39,8 +39,23 @@ const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete, onError }
   ]);
   const [currentStage, setCurrentStage] = useState(0);
   const [logs, setLogs] = useState<Log[]>([]);
+  const [isConnected, setIsConnected] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  // Check connection status
+  useEffect(() => {
+    const checkConnection = () => {
+      const now = new Date();
+      const timeSinceLastUpdate = now.getTime() - lastUpdate.getTime();
+      setIsConnected(timeSinceLastUpdate < 5000); // Consider disconnected if no updates for 5 seconds
+    };
+
+    const interval = setInterval(checkConnection, 1000);
+    return () => clearInterval(interval);
+  }, [lastUpdate]);
 
   const handleProgressUpdate = (event: ProgressUpdateEvent) => {
+    setLastUpdate(new Date());
     const { stage, progress, message } = event.detail;
     
     // Update stages
@@ -97,12 +112,24 @@ const Monitor: React.FC<MonitorProps> = ({ file, onProcessingComplete, onError }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-white mb-4">Processing Monitor</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-white">Processing Monitor</h2>
+        <div className={`px-3 py-1 rounded-full text-sm ${
+          isConnected ? 'bg-green-500' : 'bg-red-500'
+        } text-white`}>
+          {isConnected ? 'Connected' : 'Disconnected'}
+        </div>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Inputs file={file} />
         <Processes stages={stages} currentStage={currentStage} />
         <Logs logs={logs} />
       </div>
+      {!isConnected && (
+        <div className="mt-4 p-4 bg-yellow-900 text-white rounded-lg">
+          Connection lost. Attempting to reconnect...
+        </div>
+      )}
     </div>
   );
 };

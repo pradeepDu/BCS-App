@@ -9,6 +9,7 @@ interface WorkflowSelectionProps {
   initialFile: File;
   onProcessingComplete: (processedFileUrl: string, fileName: string, format: string) => void;
   onError: (errorMessage: string) => void;
+  onProcessingStart: () => void;
 }
 
 const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({ 
@@ -35,6 +36,44 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
     window.dispatchEvent(event);
   };
 
+  const retryOperation = async (operation: () => Promise<Response>, maxRetries = 3) => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (i === maxRetries - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+      }
+    }
+  };
+
+  const uploadFileInChunks = async (file: File, endpoint: string) => {
+    const chunkSize = 1024 * 1024; // 1MB chunks
+    const chunks = Math.ceil(file.size / chunkSize);
+    const formData = new FormData();
+    
+    for (let i = 0; i < chunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+      
+      formData.append(`chunk_${i}`, chunk);
+      formData.append('total_chunks', chunks.toString());
+      formData.append('current_chunk', i.toString());
+      
+      await retryOperation(async () => {
+        const response = await fetch(`http://localhost:8000${endpoint}/chunk`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
+        return response;
+      });
+      
+      dispatchProgressUpdate(1, (i / chunks) * 100, `Uploading chunk ${i + 1}/${chunks}`);
+    }
+  };
+
   const handleProcessing = async (formData: { 
     outputFormat: string; 
     watermark?: File;
@@ -49,54 +88,49 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
     setShowModal(false);
     
     try {
-      // Initialize progress
       dispatchProgressUpdate(0, 0, "Initializing video processing...");
       
-      const data = new FormData();
-      const endpoint = formData.useWatermark ? "/add-watermark/" : "/transcode/";
+      const endpoint = formData.useWatermark ? "/add-watermark" : "/transcode";
+      
+      // Upload file in chunks
+      await uploadFileInChunks(initialFile, endpoint);
+      
+      // Send processing request
+      const processData = new FormData();
+      processData.append("file_name", initialFile.name);
+      processData.append("output_format", formData.outputFormat || "mp4");
       
       if (formData.useWatermark && formData.watermark) {
-        data.append("input_video", initialFile);
-        data.append("watermark_image", formData.watermark);
-        data.append("output_format", formData.outputFormat || "mp4");
-      } else {
-        data.append("input_file", initialFile);
-        data.append("output_format", formData.outputFormat || "mp4");
+        processData.append("watermark_image", formData.watermark);
       }
-      
-      dispatchProgressUpdate(1, 20, "Reading video file...");
-      
-      console.log("Sending request to:", endpoint, {
-        file: initialFile.name,
-        size: initialFile.size,
-        type: initialFile.type,
-        outputFormat: formData.outputFormat,
-        useWatermark: formData.useWatermark
-      });
       
       dispatchProgressUpdate(2, 40, "Processing video...");
       
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
-        method: "POST",
-        body: data,
+      const response = await retryOperation(async () => {
+        const res = await fetch(`http://localhost:8000${endpoint}/process`, {
+          method: "POST",
+          body: processData,
+        });
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Error: ${res.statusText} - ${errorText}`);
+        }
+        return res;
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Server error:", response.status, errorText);
-        throw new Error(`Error: ${response.statusText} - ${errorText}`);
-      }
 
       dispatchProgressUpdate(3, 60, "Applying transformations...");
 
+      if (!response) {
+        throw new Error("Response is undefined");
+      }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const fileName = formData.useWatermark ? "watermarked-video" : "transcoded-video";
       
       dispatchProgressUpdate(4, 80, "Finalizing output...");
       
-      // Record job history with user information
-      try {
+      // Record job history with retry mechanism
+      await retryOperation(async () => {
         const jobHistoryResponse = await fetch('http://localhost:8000/api/job-history/jobs/', {
           method: 'POST',
           headers: {
@@ -118,12 +152,10 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
         });
 
         if (!jobHistoryResponse.ok) {
-          console.error("Failed to record job history:", await jobHistoryResponse.text());
+          throw new Error("Failed to record job history");
         }
-      } catch (error) {
-        console.error("Error recording job history:", error);
-        // Don't throw here, as the main processing was successful
-      }
+        return jobHistoryResponse; // Ensure a Response object is returned
+      });
       
       onProcessingComplete(url, fileName, formData.outputFormat || "mp4");
       

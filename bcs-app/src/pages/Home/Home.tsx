@@ -11,6 +11,9 @@ const Home: React.FC = () => {
   const [processedFileName, setProcessedFileName] = useState<string>("");
   const [processedFileFormat, setProcessedFileFormat] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
 
   // Cleanup processed file URL when component unmounts or when new file is selected
   useEffect(() => {
@@ -21,6 +24,17 @@ const Home: React.FC = () => {
     };
   }, [processedFileUrl]);
 
+  // Handle component unmounting
+  useEffect(() => {
+    return () => {
+      // Cleanup any ongoing processes
+      if (isProcessing) {
+        // Dispatch cleanup event
+        window.dispatchEvent(new CustomEvent('cleanupProcessing'));
+      }
+    };
+  }, [isProcessing]);
+
   const handleFileSelect = (file: File) => {
     // Cleanup previous processed file URL if exists
     if (processedFileUrl) {
@@ -28,6 +42,7 @@ const Home: React.FC = () => {
     }
     setSelectedFile(file);
     setError(null);
+    setRetryCount(0);
   };
 
   const handleProcessingComplete = (url: string, fileName: string, format: string) => {
@@ -35,6 +50,8 @@ const Home: React.FC = () => {
     setProcessedFileName(fileName);
     setProcessedFileFormat(format);
     setError(null);
+    setIsProcessing(false);
+    setRetryCount(0);
   };
 
   const handleError = (errorMessage: string) => {
@@ -43,6 +60,26 @@ const Home: React.FC = () => {
       URL.revokeObjectURL(processedFileUrl);
       setProcessedFileUrl(null);
     }
+    setIsProcessing(false);
+
+    // Implement retry logic
+    if (retryCount < maxRetries) {
+      setRetryCount(prev => prev + 1);
+      // Wait for 2 seconds before retrying
+      setTimeout(() => {
+        if (selectedFile) {
+          setIsProcessing(true);
+          // Trigger reprocessing
+          window.dispatchEvent(new CustomEvent('retryProcessing', {
+            detail: { file: selectedFile }
+          }));
+        }
+      }, 2000);
+    }
+  };
+
+  const handleProcessingStart = () => {
+    setIsProcessing(true);
   };
 
   return (
@@ -54,6 +91,7 @@ const Home: React.FC = () => {
             initialFile={selectedFile}
             onProcessingComplete={handleProcessingComplete}
             onError={handleError}
+            onProcessingStart={handleProcessingStart}
           />
         )}
       </div>
@@ -68,7 +106,14 @@ const Home: React.FC = () => {
       )}
       {error && (
         <div className="mt-4 p-4 bg-red-900 text-white rounded-lg">
-          {error}
+          <div className="flex justify-between items-center">
+            <span>{error}</span>
+            {retryCount < maxRetries && (
+              <span className="text-sm">
+                Retrying... ({retryCount + 1}/{maxRetries})
+              </span>
+            )}
+          </div>
         </div>
       )}
       {processedFileUrl && (
