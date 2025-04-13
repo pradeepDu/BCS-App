@@ -7,6 +7,8 @@ import asyncio
 from pathlib import Path
 import shutil
 import logging
+from app.services.ffmpeg_service import add_watermark, validate_format
+from app.config import UPLOAD_DIR, SUPPORTED_FORMATS
 
 router = APIRouter()
 
@@ -131,26 +133,52 @@ async def upload_transcode_chunk(
 async def process_watermark(
     file_name: str = Form(...),
     output_format: str = Form("mp4"),
-    watermark_image: Optional[UploadFile] = File(None)
+    watermark_image: UploadFile = File(...),
+    watermark_position: str = Form("top-right")
 ):
     try:
+        # Validate output format
+        if not validate_format(output_format):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported output format. Supported formats: {', '.join(SUPPORTED_FORMATS)}"
+            )
+
         # Get the uploaded file path
-        file_path = UPLOAD_DIR / file_name / f"{file_name}.mp4"
-        logger.info(f"Processing watermark for file: {file_path}")
+        input_video = UPLOAD_DIR / file_name / f"{file_name}.mp4"
+        logger.info(f"Processing watermark for file: {input_video}")
         
-        if not file_path.exists():
-            logger.error(f"File not found: {file_path}")
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        if not input_video.exists():
+            logger.error(f"File not found: {input_video}")
+            raise HTTPException(status_code=404, detail=f"File not found: {input_video}")
+
+        # Save watermark image
+        watermark_path = UPLOAD_DIR / file_name / "watermark.png"
+        with open(watermark_path, "wb") as f:
+            content = await watermark_image.read()
+            f.write(content)
+
+        # Create output path
+        output_video = UPLOAD_DIR / file_name / f"watermarked_{file_name}.{output_format}"
         
-        # Process the file (implement your watermarking logic here)
-        # For now, just return the file
-        response = FileResponse(
-            path=str(file_path),
-            filename=f"watermarked.{output_format}",
-            media_type=f"video/{output_format}",
-            background=None  # This ensures the file is sent before cleanup
+        # Apply watermark with position
+        success = add_watermark(
+            str(input_video), 
+            str(watermark_path), 
+            str(output_video), 
+            output_format,
+            watermark_position
         )
-        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to apply watermark")
+
+        # Return the watermarked file
+        response = FileResponse(
+            path=str(output_video),
+            filename=f"watermarked_{file_name}.{output_format}",
+            media_type=f"video/{output_format}"
+        )
+
         # Add cleanup callback
         async def cleanup():
             try:
@@ -160,10 +188,10 @@ async def process_watermark(
                     logger.info(f"Cleaned up directory: {temp_dir}")
             except Exception as e:
                 logger.error(f"Error cleaning up directory: {e}")
-        
+
         response.background = BackgroundTasks()
         response.background.add_task(cleanup)
-        
+
         return response
     except Exception as e:
         logger.error(f"Error processing watermark: {str(e)}")

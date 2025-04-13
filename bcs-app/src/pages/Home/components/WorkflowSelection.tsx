@@ -1,26 +1,40 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../../../ui/card";
-import WorkflowModal from "./WorkflowModal";
 import { Button } from "../../../ui/button";
 import { auth, signInWithGoogle } from "../../../Firebase/firebaseconfig";
 import { onAuthStateChanged, User } from "firebase/auth";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../ui/select";
+import { Input } from "../../../ui/input";
+import { Label } from "../../../ui/label";
+import { Progress } from "../../../ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../../ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../../ui/tabs";
 
 interface WorkflowSelectionProps {
-  initialFile: File;
-  onProcessingComplete: (processedFileUrl: string, fileName: string, format: string) => void;
-  onError: (errorMessage: string) => void;
+  initialFile: File | null;
+  onProcessingComplete: (url: string, fileName: string, format: string) => void;
+  onError: (error: string) => void;
   onProcessingStart: () => void;
+  isDisabled?: boolean;
 }
 
-const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({ 
+const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
   initialFile,
   onProcessingComplete,
-  onError
+  onError,
+  onProcessingStart,
+  isDisabled = false
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [outputFormat, setOutputFormat] = useState<string>('mp4');
+  const [progress, setProgress] = useState<number>(0);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [watermarkPosition, setWatermarkPosition] = useState<string>('top-right');
+  const [activeTab, setActiveTab] = useState<string>('transcode');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -117,34 +131,24 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
         formData.append('upload_id', uploadId);
       }
       
-      try {
-        const response = await retryOperation(async () => {
-          const res = await fetch(`http://localhost:8000/api${endpoint}/chunk`, {
-            method: "POST",
-            body: formData,
-          });
-          if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`Upload failed: ${res.statusText} - ${errorText}`);
-          }
-          return res;
-        });
-
-        const data = await response.json();
-        
-        if (data.status === 'complete') {
-          uploadId = data.file_id;
-        } else if (data.upload_id) {
-          uploadId = data.upload_id;
-        }
-        
-        dispatchProgressUpdate(1, (i / chunks) * 100, `Uploading chunk ${i + 1}/${chunks}`);
-      } catch (error) {
-        if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-          throw new Error('Connection refused. Please make sure the backend server is running.');
-        }
-        throw error;
+      const response = await fetch(`http://localhost:8000/api${endpoint}/chunk`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
       }
+      
+      const data = await response.json();
+      if (data.status === 'complete') {
+        uploadId = data.file_id;
+      } else if (data.upload_id) {
+        uploadId = data.upload_id;
+      }
+      
+      // Update progress
+      setProgress(Math.round((i / chunks) * 100));
     }
     
     if (!uploadId) {
@@ -161,6 +165,11 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
   }) => {
     if (!currentUser) {
       onError("Please log in to use this service");
+      return;
+    }
+
+    if (!initialFile) {
+      onError("No file selected");
       return;
     }
 
@@ -260,41 +269,272 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       setIsLoading(false);
     }
   };
-  
+
+  const handleProcess = async () => {
+    if (!initialFile) {
+      onError('No file selected');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      onProcessingStart();
+      setProgress(0);
+
+      // Upload the video file in chunks
+      const videoUploadId = await uploadFileInChunks(
+        initialFile,
+        activeTab === 'watermark' ? '/add-watermark' : '/transcode'
+      );
+
+      if (activeTab === 'watermark' && watermarkFile) {
+        // Upload the watermark file in chunks
+        const watermarkUploadId = await uploadFileInChunks(watermarkFile, '/add-watermark');
+
+        // Process the video with watermark
+        const processFormData = new FormData();
+        processFormData.append('file_name', videoUploadId);
+        processFormData.append('output_format', outputFormat);
+        processFormData.append('watermark_image', watermarkFile);
+        processFormData.append('watermark_position', watermarkPosition);
+
+        const processResponse = await fetch('http://localhost:8000/api/add-watermark/process', {
+          method: 'POST',
+          body: processFormData,
+        });
+
+        if (!processResponse.ok) {
+          throw new Error(`Processing failed: ${processResponse.statusText}`);
+        }
+
+        const blob = await processResponse.blob();
+        const url = URL.createObjectURL(blob);
+        
+        // Create a video element to verify the output
+        const video = document.createElement('video');
+        video.src = url;
+        video.onloadeddata = () => {
+          onProcessingComplete(url, initialFile.name, outputFormat);
+        };
+        video.onerror = () => {
+          throw new Error('Failed to load processed video');
+        };
+      } else {
+        // Process the video without watermark
+        const processFormData = new FormData();
+        processFormData.append('file_name', videoUploadId);
+        processFormData.append('output_format', outputFormat);
+
+        const processResponse = await fetch('http://localhost:8000/api/transcode/process', {
+          method: 'POST',
+          body: processFormData,
+        });
+
+        if (!processResponse.ok) {
+          throw new Error(`Processing failed: ${processResponse.statusText}`);
+        }
+
+        const blob = await processResponse.blob();
+        const url = URL.createObjectURL(blob);
+        
+        // Create a video element to verify the output
+        const video = document.createElement('video');
+        video.src = url;
+        video.onloadeddata = () => {
+          onProcessingComplete(url, initialFile.name, outputFormat);
+        };
+        video.onerror = () => {
+          throw new Error('Failed to load processed video');
+        };
+      }
+
+      setIsProcessing(false);
+      setShowModal(false);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Processing failed');
+      setIsProcessing(false);
+    }
+  };
+
+  if (isAuthLoading) {
+    return (
+      <Card className="bg-gray-800 text-white">
+        <CardContent className="flex justify-center items-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <Card className="bg-gray-800 text-white">
+        <CardContent className="p-6 text-center">
+          <h2 className="text-xl mb-4">Please sign in to process videos</h2>
+          <Button 
+            onClick={handleSignIn} 
+            className="w-full bg-white text-black hover:bg-gray-100"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Signing in...' : 'Sign In with Google'}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <Card className="p-4 h-full bg-gray-800 text-white">
-      <CardHeader>
-        <CardTitle>Video Processing Workflow</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {isAuthLoading ? (
-          <div className="text-center py-4">
-            <p>Loading authentication state...</p>
-          </div>
-        ) : currentUser ? (
-          <WorkflowModal 
-            triggerText="Process Video"
-            onSubmit={handleProcessing}
-            isSubmitting={isLoading}
-            selectedFile={initialFile}
-            open={showModal}
-            onOpenChange={setShowModal}
-          />
-        ) : (
-          <div className="text-center py-4">
-            <p className="mb-4">Please log in to process your video</p>
-            <Button 
-              variant="default" 
-              onClick={handleSignIn} 
-              className="bg-white text-black hover:bg-gray-100"
-              disabled={isLoading}
+    <>
+      <Card className="bg-gray-800 text-white">
+        <CardHeader>
+          <CardTitle>Processing Options</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Processing Type</Label>
+            <Button
+              onClick={() => setShowModal(true)}
+              className="w-full bg-white text-black hover:bg-gray-100"
+              disabled={isDisabled || isProcessing}
             >
-              {isLoading ? 'Signing in...' : 'Sign in with Google'}
+              Process Video
             </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent className="bg-gray-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Processing Options</DialogTitle>
+          </DialogHeader>
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="transcode">Transcode</TabsTrigger>
+              <TabsTrigger value="watermark">Add Watermark</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="transcode" className="space-y-4">
+              {initialFile && (
+                <div className="space-y-2">
+                  <Label>Selected File</Label>
+                  <p className="text-sm text-gray-400">{initialFile.name}</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Output Format</Label>
+                <Select 
+                  value={outputFormat} 
+                  onValueChange={setOutputFormat}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger className="bg-gray-700 text-white">
+                    <SelectValue placeholder="Select output format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mp4">MP4</SelectItem>
+                    <SelectItem value="webm">WebM</SelectItem>
+                    <SelectItem value="avi">AVI</SelectItem>
+                    <SelectItem value="mov">MOV</SelectItem>
+                    <SelectItem value="flv">FLV</SelectItem>
+                    <SelectItem value="mkv">MKV</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="watermark" className="space-y-4">
+              {initialFile && (
+                <div className="space-y-2">
+                  <Label>Selected File</Label>
+                  <p className="text-sm text-gray-400">{initialFile.name}</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Output Format</Label>
+                <Select 
+                  value={outputFormat} 
+                  onValueChange={setOutputFormat}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger className="bg-gray-700 text-white">
+                    <SelectValue placeholder="Select output format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mp4">MP4</SelectItem>
+                    <SelectItem value="webm">WebM</SelectItem>
+                    <SelectItem value="avi">AVI</SelectItem>
+                    <SelectItem value="mov">MOV</SelectItem>
+                    <SelectItem value="flv">FLV</SelectItem>
+                    <SelectItem value="mkv">MKV</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Watermark Image</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setWatermarkFile(file);
+                  }}
+                  className="bg-gray-700 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Watermark Position</Label>
+                <Select 
+                  value={watermarkPosition} 
+                  onValueChange={setWatermarkPosition}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger className="bg-gray-700 text-white">
+                    <SelectValue placeholder="Select position" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="top-left">Top Left</SelectItem>
+                    <SelectItem value="top-right">Top Right</SelectItem>
+                    <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                    <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                    <SelectItem value="center">Center</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {isProcessing && (
+            <div className="space-y-2">
+              <Label>Processing Progress</Label>
+              <Progress value={progress} className="h-2" />
+              <p className="text-sm text-gray-400">{progress}%</p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              onClick={() => setShowModal(false)}
+              className="bg-white text-black hover:bg-gray-100"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleProcess}
+              disabled={isProcessing || !initialFile || (activeTab === 'watermark' && !watermarkFile)}
+              className="bg-black text-white hover:bg-gray-800"
+            >
+              {isProcessing ? 'Processing...' : 'Process Video'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

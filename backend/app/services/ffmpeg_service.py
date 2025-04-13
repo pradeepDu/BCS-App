@@ -178,15 +178,16 @@ def transcode_video(input_file, output_file, output_format="mp4"):
         logger.error(f"Unexpected error in transcode_video: {str(e)}")
         return False
 
-def add_watermark(input_video, watermark_image, output_video, output_format=None):
+def add_watermark(input_video, watermark_image, output_video, output_format=None, position="top-right"):
     """
-    Adds a watermark (logo) to the top-right corner of a video.
+    Adds a watermark (logo) to a video at the specified position.
     
     Args:
         input_video: Path to the input video file
         watermark_image: Path to the watermark image file
         output_video: Path to save the output video file
         output_format: Output format (if None, extracted from output_video filename)
+        position: Position of the watermark (top-left, top-right, bottom-left, bottom-right, center)
         
     Returns:
         bool: True if watermarking was successful, False otherwise
@@ -216,12 +217,23 @@ def add_watermark(input_video, watermark_image, output_video, output_format=None
         # Get codec settings
         codec_settings = get_codec_settings(output_format)
         
-        # Use direct command execution instead of ffmpeg-python for watermarking
+        # Calculate watermark position
+        position_map = {
+            "top-left": "10:10",
+            "top-right": "W-w-10:10",
+            "bottom-left": "10:H-h-10",
+            "bottom-right": "W-w-10:H-h-10",
+            "center": "(W-w)/2:(H-h)/2"
+        }
+        
+        overlay_position = position_map.get(position, "W-w-10:10")  # Default to top-right if invalid position
+        
+        # Use direct command execution for watermarking
         cmd = [
             "ffmpeg", 
             "-i", input_video, 
             "-i", watermark_image,
-            "-filter_complex", "[0:v][1:v]overlay=W-w-10:10",
+            "-filter_complex", f"[1:v]scale=iw*0.4:-1[wm];[0:v][wm]overlay={overlay_position}:format=auto,format=yuv420p",
             "-c:v", codec_settings["vcodec"],
             "-c:a", codec_settings["acodec"],
             "-f", codec_settings["format"],

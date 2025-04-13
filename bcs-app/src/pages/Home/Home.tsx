@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import FilePreview from "./components/FilePreview";
 import WorkflowSelection from "./components/WorkflowSelection";
-import Monitor from "../Monitor/Monitor";
-import { Button } from "../../ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "../../ui/card";
+import { Button } from "../../ui/button";
 
 const Home: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -12,8 +11,6 @@ const Home: React.FC = () => {
   const [processedFileFormat, setProcessedFileFormat] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 3;
 
   // Cleanup processed file URL when component unmounts or when new file is selected
   useEffect(() => {
@@ -24,17 +21,6 @@ const Home: React.FC = () => {
     };
   }, [processedFileUrl]);
 
-  // Handle component unmounting
-  useEffect(() => {
-    return () => {
-      // Cleanup any ongoing processes
-      if (isProcessing) {
-        // Dispatch cleanup event
-        window.dispatchEvent(new CustomEvent('cleanupProcessing'));
-      }
-    };
-  }, [isProcessing]);
-
   const handleFileSelect = (file: File) => {
     // Cleanup previous processed file URL if exists
     if (processedFileUrl) {
@@ -42,7 +28,6 @@ const Home: React.FC = () => {
     }
     setSelectedFile(file);
     setError(null);
-    setRetryCount(0);
   };
 
   const handleProcessingComplete = (url: string, fileName: string, format: string) => {
@@ -51,7 +36,6 @@ const Home: React.FC = () => {
     setProcessedFileFormat(format);
     setError(null);
     setIsProcessing(false);
-    setRetryCount(0);
   };
 
   const handleError = (errorMessage: string) => {
@@ -61,21 +45,6 @@ const Home: React.FC = () => {
       setProcessedFileUrl(null);
     }
     setIsProcessing(false);
-
-    // Implement retry logic
-    if (retryCount < maxRetries) {
-      setRetryCount(prev => prev + 1);
-      // Wait for 2 seconds before retrying
-      setTimeout(() => {
-        if (selectedFile) {
-          setIsProcessing(true);
-          // Trigger reprocessing
-          window.dispatchEvent(new CustomEvent('retryProcessing', {
-            detail: { file: selectedFile }
-          }));
-        }
-      }, 2000);
-    }
   };
 
   const handleProcessingStart = () => {
@@ -86,33 +55,17 @@ const Home: React.FC = () => {
     <div className="container mx-auto p-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FilePreview onFileSelect={handleFileSelect} />
-        {selectedFile && (
-          <WorkflowSelection 
-            initialFile={selectedFile}
-            onProcessingComplete={handleProcessingComplete}
-            onError={handleError}
-            onProcessingStart={handleProcessingStart}
-          />
-        )}
+        <WorkflowSelection 
+          initialFile={selectedFile}
+          onProcessingComplete={handleProcessingComplete}
+          onError={handleError}
+          onProcessingStart={handleProcessingStart}
+          isDisabled={!selectedFile}
+        />
       </div>
-      {selectedFile && (
-        <div className="mt-8">
-          <Monitor 
-            file={selectedFile}
-            onError={handleError}
-          />
-        </div>
-      )}
       {error && (
         <div className="mt-4 p-4 bg-red-900 text-white rounded-lg">
-          <div className="flex justify-between items-center">
-            <span>{error}</span>
-            {retryCount < maxRetries && (
-              <span className="text-sm">
-                Retrying... ({retryCount + 1}/{maxRetries})
-              </span>
-            )}
-          </div>
+          <span>{error}</span>
         </div>
       )}
       {processedFileUrl && (
@@ -137,7 +90,7 @@ const Home: React.FC = () => {
                   download={`${processedFileName}.${processedFileFormat}`}
                   className="block w-full"
                 >
-                  <Button variant="default" className="w-full bg-white text-black hover:bg-gray-100">
+                  <Button className="w-full bg-white text-black hover:bg-gray-100">
                     Download Processed Video
                   </Button>
                 </a>
