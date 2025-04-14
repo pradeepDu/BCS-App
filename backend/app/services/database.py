@@ -34,4 +34,11 @@ class Database:
         """Get database instance"""
         if cls._db is None:
             raise Exception("Database not connected. Call Database.connect() first.")
-        return cls._db 
+        return cls._db
+
+    @classmethod
+    def get_job_logs_collection(cls):
+        """Get job logs collection"""
+        if cls._db is None:
+            raise Exception("Database not connected. Call Database.connect() first.")
+        return cls._db.job_logs 

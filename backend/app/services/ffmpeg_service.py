@@ -193,29 +193,40 @@ def add_watermark(input_video, watermark_image, output_video, output_format=None
         bool: True if watermarking was successful, False otherwise
     """
     try:
+        logger.info(f"Starting watermark process with:")
+        logger.info(f"Input video: {input_video}")
+        logger.info(f"Watermark image: {watermark_image}")
+        logger.info(f"Output video: {output_video}")
+        logger.info(f"Output format: {output_format}")
+        logger.info(f"Position: {position}")
+
         if not os.path.exists(input_video):
+            logger.error(f"Input video not found: {input_video}")
             raise FileNotFoundError(f"Input video '{input_video}' not found.")
         if not os.path.exists(watermark_image):
+            logger.error(f"Watermark image not found: {watermark_image}")
             raise FileNotFoundError(f"Watermark image '{watermark_image}' not found.")
 
         # Get output format from filename extension if not specified
         if not output_format:
             _, ext = os.path.splitext(output_video)
             output_format = ext[1:] if ext else "mp4"
+            logger.info(f"Extracted output format from filename: {output_format}")
         
         # Validate format and default to mp4 if not supported
         if not validate_format(output_format):
             logger.warning(f"Format '{output_format}' not supported. Defaulting to mp4.")
             output_format = "mp4"
             output_video = os.path.splitext(output_video)[0] + ".mp4"
+            logger.info(f"Using default format: {output_format}")
         
         # Ensure the output directory exists
         os.makedirs(os.path.dirname(output_video), exist_ok=True)
-        
-        logger.info(f"Adding watermark to video: {input_video} with format {output_format}")
+        logger.info(f"Ensured output directory exists: {os.path.dirname(output_video)}")
         
         # Get codec settings
         codec_settings = get_codec_settings(output_format)
+        logger.info(f"Using codec settings: {codec_settings}")
         
         # Calculate watermark position
         position_map = {
@@ -227,38 +238,41 @@ def add_watermark(input_video, watermark_image, output_video, output_format=None
         }
         
         overlay_position = position_map.get(position, "W-w-10:10")  # Default to top-right if invalid position
+        logger.info(f"Using overlay position: {overlay_position}")
         
-        # Use direct command execution for watermarking
+        # Use direct command execution for watermarking with proper alpha channel handling
         cmd = [
             "ffmpeg", 
             "-i", input_video, 
             "-i", watermark_image,
-            "-filter_complex", f"[1:v]scale=iw*0.4:-1[wm];[0:v][wm]overlay={overlay_position}:format=auto,format=yuv420p",
+            "-filter_complex", f"[1:v]scale=iw*0.4:-1,format=rgba[wm];[0:v][wm]overlay={overlay_position}:format=auto,format=yuv420p",
             "-c:v", codec_settings["vcodec"],
             "-c:a", codec_settings["acodec"],
             "-f", codec_settings["format"],
             "-y", output_video
         ]
         
-        logger.info(f"Executing command: {' '.join(cmd)}")
+        logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
             logger.error(f"FFmpeg command failed with return code {result.returncode}")
+            logger.error(f"FFmpeg stdout: {result.stdout}")
             logger.error(f"FFmpeg stderr: {result.stderr}")
             return False
         
         # Verify the output file was created successfully
         if not os.path.exists(output_video):
-            logger.error(f"Watermarking failed: Output file doesn't exist")
+            logger.error(f"Watermarking failed: Output file doesn't exist at {output_video}")
             return False
             
         if os.path.getsize(output_video) == 0:
-            logger.error(f"Watermarking failed: Output file is empty")
+            logger.error(f"Watermarking failed: Output file is empty at {output_video}")
             return False
             
         logger.info(f"Watermarking successful. Output file size: {os.path.getsize(output_video)} bytes")
         return True
     except Exception as e:
         logger.error(f"Unexpected error in add_watermark: {str(e)}")
+        logger.exception("Full error details:")  # This will log the full stack trace
         return False

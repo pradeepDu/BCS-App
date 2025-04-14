@@ -30,9 +30,19 @@ async def add_job(job: JobHistory):
     """Add a new job to history"""
     try:
         db = Database.get_db()
-        job_dict = job.dict()
-        await db.jobs.insert_one(job_dict)
-        logger.info(f"Added new job to history: {job.id}")
+        job_dict = job.model_dump(exclude={'frontend_id'})  # Exclude frontend-generated ID
+        job_dict["timestamp"] = datetime.utcnow()
+        
+        # Log the incoming data for debugging
+        logger.info(f"Creating job history entry with data: {job_dict}")
+        
+        result = await db.jobs.insert_one(job_dict)
+        job_dict["_id"] = result.inserted_id
+        
+        # Log the created document
+        logger.info(f"Created job history entry with ID: {result.inserted_id}")
+        
+        return JobHistory(**job_dict)
     except Exception as e:
         logger.error(f"Error adding job to history: {str(e)}")
         raise Exception(f"Failed to add job to history: {str(e)}")

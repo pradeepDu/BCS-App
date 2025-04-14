@@ -9,6 +9,7 @@ import { Label } from "../../../ui/label";
 import { Progress } from "../../../ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../../ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../../ui/tabs";
+import { v4 as uuidv4 } from 'uuid';
 
 interface WorkflowSelectionProps {
   initialFile: File | null;
@@ -30,11 +31,14 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
   const [showModal, setShowModal] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [outputFormat, setOutputFormat] = useState<string>('mp4');
-  const [progress, setProgress] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [watermarkPosition, setWatermarkPosition] = useState<string>('top-right');
   const [activeTab, setActiveTab] = useState<string>('transcode');
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [outputUrl, setOutputUrl] = useState<string | null>(null);
+  const [isComplete, setIsComplete] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -46,6 +50,25 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const storedJob = localStorage.getItem('currentJob');
+    if (storedJob) {
+      try {
+        const job = JSON.parse(storedJob);
+        if (job.status === 'completed' && job.outputUrl) {
+          if (job.userId === currentUser?.uid) {
+            setIsComplete(true);
+            setOutputUrl(job.outputUrl);
+            setCurrentJobId(job.jobId);
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing stored job:", e);
+        localStorage.removeItem('currentJob');
+      }
+    }
+  }, [currentUser]);
 
   const handleSignIn = async () => {
     try {
@@ -61,7 +84,21 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
 
   const dispatchProgressUpdate = (stage: number, progress: number, message: string) => {
     const event = new CustomEvent('progressUpdate', {
-      detail: { stage, progress, message }
+      detail: { 
+        stage, 
+        progress, 
+        message,
+        timestamp: new Date().toISOString(),
+        jobId: currentJobId,
+        processingType: activeTab,
+        fileName: initialFile?.name || '',
+        fileSize: initialFile?.size || 0,
+        fileType: initialFile?.type || '',
+        userId: currentUser?.uid || '',
+        userName: currentUser?.displayName || '',
+        userEmail: currentUser?.email || '',
+        outputUrl: outputUrl
+      }
     });
     window.dispatchEvent(event);
   };
@@ -113,183 +150,111 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
     throw lastError || new Error('Operation failed after maximum retries');
   };
 
-  const uploadFileInChunks = async (file: File, endpoint: string): Promise<string> => {
+  const uploadFileInChunks = async (file: File, fileType: string): Promise<string> => {
     const chunkSize = 1024 * 1024; // 1MB chunks
-    const chunks = Math.ceil(file.size / chunkSize);
-    let uploadId: string | null = null;
-    
-    for (let i = 0; i < chunks; i++) {
-      const start = i * chunkSize;
-      const end = Math.min(start + chunkSize, file.size);
-      const chunk = file.slice(start, end);
-      
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    let uploadId = null;
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = file.slice(i * chunkSize, (i + 1) * chunkSize);
       const formData = new FormData();
       formData.append('chunk', chunk);
-      formData.append('total_chunks', chunks.toString());
+      formData.append('total_chunks', totalChunks.toString());
       formData.append('current_chunk', i.toString());
       if (uploadId) {
         formData.append('upload_id', uploadId);
       }
-      
-      const response = await fetch(`http://localhost:8000/api${endpoint}/chunk`, {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      if (data.status === 'complete') {
-        uploadId = data.file_id;
-      } else if (data.upload_id) {
-        uploadId = data.upload_id;
-      }
-      
-      // Update progress
-      setProgress(Math.round((i / chunks) * 100));
-    }
-    
-    if (!uploadId) {
-      throw new Error('Upload failed: No file ID received');
-    }
-    
-    return uploadId;
-  };
 
-  const handleProcessing = async (formData: { 
-    outputFormat: string; 
-    watermark?: File;
-    useWatermark: boolean;
-  }) => {
-    if (!currentUser) {
-      onError("Please log in to use this service");
-      return;
-    }
+      try {
+        // Use video_processing router for all uploads
+        // Map the fileType to the correct endpoint
+        const endpoint = fileType === 'transcode' 
+          ? 'http://localhost:8000/api/video-processing/transcode/chunk' 
+          : 'http://localhost:8000/api/video-processing/add-watermark/chunk';
 
-    if (!initialFile) {
-      onError("No file selected");
-      return;
-    }
-
-    setIsLoading(true);
-    setShowModal(false);
-    
-    try {
-      // Check server health before starting
-      const isHealthy = await checkServerHealth();
-      if (!isHealthy) {
-        throw new Error('Server is not responding. Please try again later.');
-      }
-
-      dispatchProgressUpdate(0, 0, "Initializing video processing...");
-      
-      const endpoint = formData.useWatermark ? "/add-watermark" : "/transcode";
-      
-      // Upload file in chunks
-      const uploadId = await uploadFileInChunks(initialFile, endpoint);
-      
-      // Send processing request
-      const processData = new FormData();
-      processData.append("file_name", uploadId);
-      processData.append("output_format", formData.outputFormat || "mp4");
-      
-      if (formData.useWatermark && formData.watermark) {
-        processData.append("watermark_image", formData.watermark);
-      }
-      
-      dispatchProgressUpdate(2, 40, "Processing video...");
-      
-      const response = await retryOperation(async () => {
-        const res = await fetch(`http://localhost:8000/api${endpoint}/process`, {
-          method: "POST",
-          body: processData,
-          credentials: 'include',
-          headers: {
-            'Accept': 'video/*'
-          }
-        });
-        if (!res.ok) {
-          const errorText = await res.text();
-          console.error("Server response:", errorText);
-          throw new Error(`Error: ${res.statusText} - ${errorText}`);
-        }
-        return res;
-      });
-
-      dispatchProgressUpdate(3, 60, "Applying transformations...");
-
-      const blob = await response.blob();
-      if (blob.size === 0) {
-        throw new Error("Received empty file from server");
-      }
-      
-      const url = URL.createObjectURL(blob);
-      const fileName = formData.useWatermark ? "watermarked-video" : "transcoded-video";
-      
-      dispatchProgressUpdate(4, 80, "Finalizing output...");
-      
-      // Record job history with retry mechanism
-      await retryOperation(async () => {
-        const response = await fetch('http://localhost:8000/api/job-history/jobs/', {
+        const response = await fetch(endpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            id: crypto.randomUUID(),
-            user_id: currentUser.uid,
-            user_name: currentUser.displayName,
-            user_email: currentUser.email,
-            file_name: initialFile.name,
-            file_size: initialFile.size,
-            file_type: initialFile.type,
-            status: 'completed',
-            timestamp: new Date().toISOString(),
-            output_format: formData.outputFormat || "mp4",
-            processing_type: formData.useWatermark ? 'watermark' : 'transcode'
-          })
+          body: formData,
         });
 
         if (!response.ok) {
-          throw new Error("Failed to record job history");
+          const errorText = await response.text();
+          throw new Error(`Chunk upload failed: ${errorText}`);
         }
-        return response;
-      });
-      
-      onProcessingComplete(url, fileName, formData.outputFormat || "mp4");
-      
-      dispatchProgressUpdate(5, 100, "Processing completed successfully!");
-    } catch (error) {
-      console.error("An error occurred during processing:", error);
-      onError(error instanceof Error ? error.message : String(error));
-      dispatchProgressUpdate(-1, 0, `Error: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsLoading(false);
+
+        const result = await response.json();
+        uploadId = result.upload_id || result.file_id;
+
+        // Calculate and update upload progress
+        const progress = Math.round(((i + 1) / totalChunks) * 100);
+        setUploadProgress(progress);
+
+        // If this is the last chunk and upload is complete
+        if (i === totalChunks - 1 && result.status === 'complete') {
+          return uploadId;
+        }
+      } catch (error) {
+        console.error('Error uploading chunk:', error);
+        throw error;
+      }
     }
+
+    // If we get here, the upload didn't complete
+    throw new Error('Upload failed to complete');
   };
 
   const handleProcess = async () => {
+    if (!currentUser) {
+      onError('Please log in to process videos');
+      return;
+    }
+
     if (!initialFile) {
-      onError('No file selected');
+      onError('Please select a file first');
       return;
     }
 
     try {
       setIsProcessing(true);
+      setIsComplete(false);
+      setOutputUrl(null);
       onProcessingStart();
-      setProgress(0);
+      
+      // Generate a unique job ID for this processing session
+      const jobId = uuidv4();
+      setCurrentJobId(jobId);
+      
+      // Store job details in localStorage for persistence
+      localStorage.setItem('currentJob', JSON.stringify({
+        jobId,
+        processingType: activeTab,
+        fileName: initialFile.name,
+        fileSize: initialFile.size,
+        fileType: initialFile.type,
+        userId: currentUser.uid,
+        userName: currentUser.displayName,
+        userEmail: currentUser.email,
+        status: 'processing',
+        progress: 0,
+        currentStage: 'Initializing',
+        outputUrl: null
+      }));
+      
+      dispatchProgressUpdate(0, 0, "Initializing...");
 
       // Upload the video file in chunks
+      dispatchProgressUpdate(1, 20, "Uploading video file...");
       const videoUploadId = await uploadFileInChunks(
         initialFile,
-        activeTab === 'watermark' ? '/add-watermark' : '/transcode'
+        activeTab === 'watermark' ? 'watermark' : 'transcode'
       );
+      dispatchProgressUpdate(2, 40, "Video file uploaded successfully");
 
       if (activeTab === 'watermark' && watermarkFile) {
         // Upload the watermark file in chunks
-        const watermarkUploadId = await uploadFileInChunks(watermarkFile, '/add-watermark');
+        dispatchProgressUpdate(3, 60, "Uploading watermark...");
+        const watermarkUploadId = await uploadFileInChunks(watermarkFile, 'watermark');
+        dispatchProgressUpdate(4, 80, "Watermark uploaded successfully");
 
         // Process the video with watermark
         const processFormData = new FormData();
@@ -297,8 +262,14 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
         processFormData.append('output_format', outputFormat);
         processFormData.append('watermark_image', watermarkFile);
         processFormData.append('watermark_position', watermarkPosition);
+        processFormData.append('user_id', currentUser.uid);
+        processFormData.append('user_name', currentUser.displayName || '');
+        processFormData.append('user_email', currentUser.email || '');
+        processFormData.append('job_id', jobId);
+        processFormData.append('original_file_name', initialFile.name);
 
-        const processResponse = await fetch('http://localhost:8000/api/add-watermark/process', {
+        dispatchProgressUpdate(5, 90, "Applying watermark...");
+        const processResponse = await fetch('http://localhost:8000/api/video-processing/add-watermark/process', {
           method: 'POST',
           body: processFormData,
         });
@@ -309,23 +280,43 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
 
         const blob = await processResponse.blob();
         const url = URL.createObjectURL(blob);
+        setOutputUrl(url);
         
-        // Create a video element to verify the output
-        const video = document.createElement('video');
-        video.src = url;
-        video.onloadeddata = () => {
-          onProcessingComplete(url, initialFile.name, outputFormat);
-        };
-        video.onerror = () => {
-          throw new Error('Failed to load processed video');
-        };
+        dispatchProgressUpdate(6, 100, "Processing completed successfully");
+        
+        // Update localStorage with COMPLETED status and STABLE URL
+        localStorage.setItem('currentJob', JSON.stringify({
+          jobId,
+          processingType: activeTab,
+          fileName: initialFile.name,
+          fileSize: initialFile.size,
+          fileType: initialFile.type,
+          userId: currentUser.uid,
+          userName: currentUser.displayName,
+          userEmail: currentUser.email,
+          status: 'completed',
+          progress: 100,
+          currentStage: 'Completed',
+          outputUrl: url
+        }));
+        
+        setIsComplete(true);
+        onProcessingComplete(url, initialFile.name, outputFormat);
       } else {
-        // Process the video without watermark
+        // Process the video without watermark (transcode)
         const processFormData = new FormData();
         processFormData.append('file_name', videoUploadId);
         processFormData.append('output_format', outputFormat);
+        processFormData.append('user_id', currentUser.uid);
+        processFormData.append('user_name', currentUser.displayName || '');
+        processFormData.append('user_email', currentUser.email || '');
+        processFormData.append('job_id', jobId);
+        processFormData.append('original_file_name', initialFile.name);
 
-        const processResponse = await fetch('http://localhost:8000/api/transcode/process', {
+        dispatchProgressUpdate(3, 60, "Transcoding video...");
+        
+        // Fix the endpoint - use the correct video processing endpoint for transcode
+        const processResponse = await fetch('http://localhost:8000/api/video-processing/transcode/process', {
           method: 'POST',
           body: processFormData,
         });
@@ -336,23 +327,49 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
 
         const blob = await processResponse.blob();
         const url = URL.createObjectURL(blob);
+        setOutputUrl(url);
         
-        // Create a video element to verify the output
-        const video = document.createElement('video');
-        video.src = url;
-        video.onloadeddata = () => {
-          onProcessingComplete(url, initialFile.name, outputFormat);
-        };
-        video.onerror = () => {
-          throw new Error('Failed to load processed video');
-        };
+        dispatchProgressUpdate(4, 100, "Processing completed successfully");
+        
+        // Update localStorage with completed status and output URL
+        localStorage.setItem('currentJob', JSON.stringify({
+          jobId,
+          processingType: activeTab,
+          fileName: initialFile.name,
+          fileSize: initialFile.size,
+          fileType: initialFile.type,
+          userId: currentUser.uid,
+          userName: currentUser.displayName,
+          userEmail: currentUser.email,
+          status: 'completed',
+          progress: 100,
+          currentStage: 'Completed',
+          outputUrl: url
+        }));
+        
+        setIsComplete(true);
+        onProcessingComplete(url, initialFile.name, outputFormat);
       }
 
       setIsProcessing(false);
       setShowModal(false);
     } catch (error) {
+      dispatchProgressUpdate(-1, 0, `Error: ${error instanceof Error ? error.message : 'Processing failed'}`);
       onError(error instanceof Error ? error.message : 'Processing failed');
       setIsProcessing(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (outputUrl) {
+      const link = document.createElement('a');
+      link.href = outputUrl;
+      const baseName = initialFile?.name.split('.').slice(0, -1).join('.') || 'processed_file';
+      const extension = outputFormat;
+      link.download = `${baseName}_${activeTab}_processed.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -382,13 +399,13 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
       </Card>
     );
   }
-
+  
   return (
     <>
       <Card className="bg-gray-800 text-white">
-        <CardHeader>
+      <CardHeader>
           <CardTitle>Processing Options</CardTitle>
-        </CardHeader>
+      </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Processing Type</Label>
@@ -452,7 +469,7 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
                   <p className="text-sm text-gray-400">{initialFile.name}</p>
                 </div>
               )}
-
+              
               <div className="space-y-2">
                 <Label>Output Format</Label>
                 <Select 
@@ -512,8 +529,19 @@ const WorkflowSelection: React.FC<WorkflowSelectionProps> = ({
           {isProcessing && (
             <div className="space-y-2">
               <Label>Processing Progress</Label>
-              <Progress value={progress} className="h-2" />
-              <p className="text-sm text-gray-400">{progress}%</p>
+              <Progress value={uploadProgress} className="h-2" />
+              <p className="text-sm text-gray-400">{uploadProgress}%</p>
+            </div>
+          )}
+
+          {isComplete && outputUrl && (
+            <div className="mt-4">
+              <Button
+                onClick={handleDownload}
+                className="w-full bg-green-500 text-white hover:bg-green-600"
+              >
+                Download Processed Video
+              </Button>
             </div>
           )}
 
